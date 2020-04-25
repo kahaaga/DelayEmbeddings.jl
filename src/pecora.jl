@@ -134,7 +134,7 @@ is between d0 < dj ≤ d. Here is how we find the nearest neighbor:
 
 =#
 
-using Distances, Statistics, StatsBase
+using Distances, Statistics, StatsBase, Neighborhood
 export pecora
 
 # TODO: Generalize the table for more α values
@@ -173,7 +173,7 @@ The returned results are *matrices* with size `T`x`J`.
 * `N = 100`: over how many fiducial points v to average ε★ to produce `⟨ε★⟩, ⟨Γ⟩`
 * `K = 7`: the amount of nearest neighbors in the δ-ball (read algorithm description).
   If given a vector, minimum result over all `k ∈ K` is returned.
-* `metric = Chebyshev()`: metrix with which to find nearest neigbhors in the input
+* `metric = Chebyshev()`: metric with which to find nearest neigbhors in the input
   embedding (ℝᵈ space, `d = length(τs)`).
 * `w = 1`: Theiler window (neighbors in time with index `w` close to the point, that
   are excluded from being true neighbors). `w=0` means to exclude only the
@@ -202,7 +202,7 @@ function pecora(
     end
     undersampling && metric ≠ Chebyshev() && error("Chebyshev metric required for undersampling")
     vspace = genembed(s, τs, js)
-    vtree = KDTree(vspace.data, metric)
+    vtree = searchstructure(KDTree, vspace.data, metric)
     all_ε★ = zeros(length(T), length(J))
     all_Γ = copy(all_ε★)
     allts = columns(s)
@@ -239,14 +239,8 @@ Return the `maximum(K)`-th nearest neighbors for all input points `vs`, with ind
 original data, while respecting the theiler window `w`.
 """
 function all_neighbors(vtree, vs, ns, K, w)
-    k, sortres, N = maximum(K), true, length(vs)
-    dists = [Vector{eltype(vs[1])}(undef, k) for _ in 1:N]
-    idxs = [Vector{Int}(undef, k) for _ in 1:N]
-    for i in 1:N
-        # The skip predicate also skips the point itself for w ≥ 0
-        skip = j -> ns[i] - w ≤ j ≤ ns[i] + w
-        NearestNeighbors.knn_point!(vtree, vs[i], sortres, dists[i], idxs[i], skip)
-    end
+    theiler = Theiler(w, ns)
+    idxs, dists = bulksearch(vtree, vs, NeighborNumber(maximum(K)), theiler)
     return idxs, dists
 end
 
